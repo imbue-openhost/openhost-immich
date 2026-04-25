@@ -24,34 +24,40 @@ fi
 # The provisioning script runs as the postgres user via su; postgres
 # trusts local connections (see pg_hba.conf set up in openhost-init)
 # so no password handshake is needed for these admin DDLs.
+#
+# We bake the DB password directly into the generated script (rather
+# than passing through env to su, which strips env on `su -`). The
+# script lives in tmpfs and is removed after; readable only by
+# postgres.
 PROVISION_SCRIPT=/tmp/openhost-immich-provision.sh
-cat > "$PROVISION_SCRIPT" <<PROVISION_EOF
+DB_PASSWORD_ESC=$(printf '%s' "$DB_PASSWORD" | sed -e "s/'/''/g")
+# Outer "EOF" intentionally NOT quoted, so $DB_PASSWORD_ESC inside
+# expands at heredoc-render time. Other $var references that should
+# survive into the running script are escaped with \$.
+cat > "$PROVISION_SCRIPT" <<EOF
 #!/bin/bash
 set -e
-PSQL="/usr/lib/postgresql/14/bin/psql"
+PSQL=/usr/lib/postgresql/14/bin/psql
 for i in 1 2 3 4 5 6 7 8 9 10; do
     if /usr/lib/postgresql/14/bin/pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
         break
     fi
     sleep 2
 done
-DB_PASSWORD_ESC=\$(printf '%s' "\${DB_PASSWORD}" | sed -e "s/'/''/g")
-# Always (idempotently) sync the role's password to the current
-# DB_PASSWORD, even if the role already exists with a different
-# password from an earlier image build. This is safe because the
-# role+DB are local to this app's loopback-only DB; the password is
-# trust-from-localhost-only and only Immich uses it.
-if \${PSQL} -tAc "SELECT 1 FROM pg_roles WHERE rolname='immich'" 2>/dev/null | grep -q 1; then
-    \${PSQL} -c "ALTER ROLE immich WITH LOGIN PASSWORD '\${DB_PASSWORD_ESC}'"
+# Always (idempotently) sync the role's password. Safe because the
+# DB is loopback-only and only Immich uses it.
+if \$PSQL -tAc "SELECT 1 FROM pg_roles WHERE rolname='immich'" 2>/dev/null | grep -q 1; then
+    \$PSQL -c "ALTER ROLE immich WITH LOGIN PASSWORD '${DB_PASSWORD_ESC}'"
 else
-    \${PSQL} -c "CREATE ROLE immich WITH LOGIN PASSWORD '\${DB_PASSWORD_ESC}'"
+    \$PSQL -c "CREATE ROLE immich WITH LOGIN PASSWORD '${DB_PASSWORD_ESC}'"
 fi
-\${PSQL} -tAc "SELECT 1 FROM pg_database WHERE datname='immich'" 2>/dev/null | grep -q 1 \\
-    || \${PSQL} -c "CREATE DATABASE immich OWNER immich"
-\${PSQL} -d immich -c "CREATE EXTENSION IF NOT EXISTS vectorchord CASCADE" || true
-\${PSQL} -d immich -c "CREATE EXTENSION IF NOT EXISTS pgvectors CASCADE" || true
-PROVISION_EOF
-chmod 0755 "$PROVISION_SCRIPT"
-( sleep 5; DB_PASSWORD="$DB_PASSWORD" su - postgres -s /bin/bash -c "$PROVISION_SCRIPT" ) &
+\$PSQL -tAc "SELECT 1 FROM pg_database WHERE datname='immich'" 2>/dev/null | grep -q 1 \\
+    || \$PSQL -c "CREATE DATABASE immich OWNER immich"
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS vectorchord CASCADE" || true
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS pgvectors CASCADE" || true
+EOF
+chown postgres:postgres "$PROVISION_SCRIPT"
+chmod 0700 "$PROVISION_SCRIPT"
+( sleep 5; su - postgres -s /bin/bash -c "$PROVISION_SCRIPT && rm -f $PROVISION_SCRIPT" ) &
 
 exec s6-setuidgid postgres /usr/lib/postgresql/14/bin/postgres -D "$PG_DIR"
