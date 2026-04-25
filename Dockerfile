@@ -125,7 +125,8 @@ RUN \
   if ! id postgres >/dev/null 2>&1; then \
     useradd --system -g postgres -d /var/lib/postgresql -s /bin/bash postgres; \
   fi && \
-  install -d -o postgres -g postgres -m 0700 /var/lib/postgresql
+  install -d -o postgres -g postgres -m 0700 /var/lib/postgresql && \
+  install -d -o postgres -g postgres -m 0755 /var/run/postgresql
 
 # ---------- OIDC bridge (Python) ------------------------------------
 

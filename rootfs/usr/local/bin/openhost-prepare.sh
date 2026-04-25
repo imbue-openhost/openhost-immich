@@ -38,6 +38,10 @@ log "DATA_DIR=$DATA_DIR"
 mkdir -p "$DATA_DIR" "$PG_DIR" "$PHOTOS_DIR" "$CONFIG_DIR" "$OIDC_DIR" "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 
+# /var/run/postgresql is on tmpfs (recreated empty on every boot).
+# postgres needs it for the unix socket and lock file.
+install -d -o postgres -g postgres -m 0755 /var/run/postgresql
+
 # DB_PASSWORD, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET are pre-set as
 # environment variables by the Dockerfile (constant per image; only
 # the loopback-local Postgres and OIDC bridge need them). We use
