@@ -112,10 +112,18 @@ RUN \
 
 COPY oidc-bridge/requirements.txt /usr/local/share/oidc-bridge/requirements.txt
 COPY oidc-bridge/server.py /usr/local/share/oidc-bridge/server.py
+# The base image's python doesn't always ship ensurepip, so a venv
+# isn't reliable. Install pip globally and then install the bridge's
+# pinned deps with --break-system-packages (PEP 668 escape hatch on
+# Ubuntu noble). The container has exactly one Python program; a
+# system-wide install is fine.
 RUN \
-  python3 -m venv /opt/oidc-bridge-venv && \
-  /opt/oidc-bridge-venv/bin/pip install --no-cache-dir \
-    -r /usr/local/share/oidc-bridge/requirements.txt
+  apt-get update && \
+  apt-get install -y --no-install-recommends python3-pip && \
+  pip3 install --no-cache-dir --break-system-packages \
+    -r /usr/local/share/oidc-bridge/requirements.txt && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 # ---------- nginx config --------------------------------------------
 
