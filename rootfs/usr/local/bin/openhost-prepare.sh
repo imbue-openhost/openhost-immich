@@ -135,14 +135,14 @@ chown postgres:postgres "$PG_DIR/postgresql.conf" "$PG_DIR/pg_hba.conf" 2>/dev/n
 chmod 0640 "$PG_DIR/postgresql.conf" "$PG_DIR/pg_hba.conf" 2>/dev/null || true
 
 # --- preconfigure Immich's system.json with our OAuth ---------------
-# Immich reads /usr/src/app/config/<file>.json (or wherever
-# IMMICH_CONFIG_FILE points). We point Immich at a config file we
-# manage on the persistent volume so the OAuth settings are baked in
-# from the very first boot, and survive image updates.
+# Immich reads its system config from $IMMICH_CONFIG_FILE (set in
+# the Dockerfile ENV so it's available at process spawn time, before
+# this script runs). We write the file on every boot so config
+# updates from image upgrades take effect, and so we always reflect
+# the current PUBLIC_BASE / OIDC_CLIENT_* values.
 SYSTEM_CONFIG="$CONFIG_DIR/system.json"
-if [[ ! -f "$SYSTEM_CONFIG" ]]; then
-    log "Writing default Immich system.json with OIDC pre-configured"
-    cat > "$SYSTEM_CONFIG" <<EOF
+log "Writing Immich system.json with OIDC pre-configured"
+cat > "$SYSTEM_CONFIG" <<EOF
 {
   "oauth": {
     "enabled": true,
@@ -154,10 +154,9 @@ if [[ ! -f "$SYSTEM_CONFIG" ]]; then
     "clientSecret": "${OIDC_CLIENT_SECRET}",
     "scope": "openid email profile",
     "signingAlgorithm": "RS256",
-    "userinfoSigningAlgorithm": "none",
+    "profileSigningAlgorithm": "none",
     "storageLabelClaim": "preferred_username",
-    "mobileOverrideEnabled": false,
-    "profileSigningAlgorithm": "none"
+    "mobileOverrideEnabled": false
   },
   "passwordLogin": {
     "enabled": false
@@ -167,9 +166,6 @@ if [[ ! -f "$SYSTEM_CONFIG" ]]; then
   }
 }
 EOF
-fi
-# Tell Immich to read this config file. The imagegenius image's
-# immich-server start script honours IMMICH_CONFIG_FILE.
-echo -n "$SYSTEM_CONFIG" > /var/run/s6/container_environment/IMMICH_CONFIG_FILE
+chmod 0644 "$SYSTEM_CONFIG"
 
 log "openhost-init complete"

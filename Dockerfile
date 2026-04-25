@@ -218,6 +218,11 @@ ENV \
   SERVER_PORT="2283" \
   MACHINE_LEARNING_HOST="127.0.0.1" \
   MACHINE_LEARNING_PORT="3003" \
+  # Tell Immich to read its system config (with OAuth pre-baked) from
+  # this path. openhost-init writes the file on every boot so the
+  # OAuth settings come from the pre-baked client_id/client_secret/
+  # issuer URL rather than requiring an admin to fill them in.
+  IMMICH_CONFIG_FILE="/data/app_data/immich/config/system.json" \
   # Override the imagegenius default UPLOAD/DATA paths so they live
   # on the OpenHost persistent volume (set in start.sh / s6 init).
   PUID="911" \
