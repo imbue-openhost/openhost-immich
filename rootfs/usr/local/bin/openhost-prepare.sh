@@ -171,6 +171,7 @@ cat > "$SYSTEM_CONFIG" <<EOF
     "signingAlgorithm": "RS256",
     "profileSigningAlgorithm": "none",
     "storageLabelClaim": "preferred_username",
+    "roleClaim": "immich_role",
     "mobileOverrideEnabled": false
   },
   "passwordLogin": {

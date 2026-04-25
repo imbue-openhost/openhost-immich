@@ -310,6 +310,15 @@ async def token(request: Request) -> JSONResponse:
         "email_verified": True,
         "name": email.split("@", 1)[0],
         "preferred_username": email.split("@", 1)[0],
+        # OpenHost is single-tenant: the only user who reaches the
+        # bridge is the compute-space owner. Assert that role here so
+        # Immich treats them as the admin (specifically when Immich
+        # is configured with `roleClaim: immich_role` in its OAuth
+        # settings, which we set in openhost-prepare.sh's
+        # system.json). Without this claim Immich rejects the very
+        # first OAuth registration with "The first registered
+        # account must the administrator."
+        "immich_role": "admin",
     }
     if record.get("nonce"):
         id_token_claims["nonce"] = record["nonce"]
@@ -370,6 +379,8 @@ async def userinfo(request: Request) -> JSONResponse:
         "email_verified": True,
         "name": email.split("@", 1)[0] if email else claims["sub"],
         "preferred_username": email.split("@", 1)[0] if email else claims["sub"],
+        # See id_token rationale above.
+        "immich_role": "admin",
     })
 
 
