@@ -73,11 +73,6 @@ RUN \
 # server inside our s6 setup.
 COPY --from=pgsrc /usr/lib/postgresql /usr/lib/postgresql
 COPY --from=pgsrc /usr/share/postgresql /usr/share/postgresql
-# pg_config + libpq are normally installed via libpq5 above, but the
-# pgsrc image carries newer versions of the extensions' depended-on
-# libraries. Copy /usr/lib/x86_64-linux-gnu/postgresql for any
-# additional shared libs.
-COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/postgresql /usr/lib/x86_64-linux-gnu/postgresql
 
 # Some VectorChord extensions link against liblz4, libxxhash etc. The
 # upstream image's libraries are newer than Ubuntu 24.04's defaults;
