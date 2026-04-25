@@ -42,6 +42,15 @@ chmod 700 "$SECRETS_DIR"
 # postgres needs it for the unix socket and lock file.
 install -d -o postgres -g postgres -m 0755 /var/run/postgresql
 
+# Photos and config dirs need to be writable by the abc user (UID
+# 911 inside the container). Under rootless podman the OpenHost
+# volume arrives owned by host root, which the container's "root"
+# can read/write but the abc user cannot. chmod world-writable so
+# every in-container user (root, abc, postgres) can write
+# regardless of the host UID mapping. The DB data dir stays 0700
+# postgres-only for security.
+chmod 0777 "$PHOTOS_DIR" "$CONFIG_DIR" 2>/dev/null || true
+
 # DB_PASSWORD, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET are pre-set as
 # environment variables by the Dockerfile (constant per image; only
 # the loopback-local Postgres and OIDC bridge need them). We use
@@ -96,20 +105,34 @@ if [[ -z "$(ls -A "$PG_DIR" 2>/dev/null)" ]]; then
     log "Initialising postgres data dir at $PG_DIR"
     su - postgres -s /bin/bash -c "/usr/lib/postgresql/14/bin/initdb -D '$PG_DIR' --auth=trust --auth-host=md5 --data-checksums --encoding=UTF8 --no-locale" \
         || { log "initdb failed"; exit 1; }
-    # Enable listening on localhost for the immich client.
-    cat >> "$PG_DIR/postgresql.conf" <<'PGCONF'
+    log "Postgres initialised; will create immich role on first run via the postgres service"
+fi
+
+# Always (re-)write postgresql.conf and pg_hba.conf, so changes
+# between image versions take effect on the next restart. We
+# overwrite the config rather than append so an image rollback
+# cleanly takes the prior config back.
+log "Writing postgres config"
+cat > "$PG_DIR/postgresql.conf" <<'PGCONF'
 listen_addresses = '127.0.0.1'
 port = 5432
-shared_preload_libraries = 'vchord.so'
+# Both vchord (VectorChord) and vectors (pgvecto.rs) require their
+# shared libraries to be preloaded; pgvecto.rs in particular
+# refuses to load via CREATE EXTENSION without it.
+shared_preload_libraries = 'vchord.so,vectors.so'
+# Reasonable defaults for a personal-scale Immich instance.
+max_connections = 100
+shared_buffers = 256MB
+work_mem = 16MB
+maintenance_work_mem = 64MB
 PGCONF
-    cat > "$PG_DIR/pg_hba.conf" <<'PGHBA'
+cat > "$PG_DIR/pg_hba.conf" <<'PGHBA'
 local   all             all                                     trust
 host    all             all             127.0.0.1/32            md5
 host    all             all             ::1/128                 md5
 PGHBA
-    chown postgres:postgres "$PG_DIR/postgresql.conf" "$PG_DIR/pg_hba.conf" 2>/dev/null || true
-    log "Postgres initialised; will create immich role on first run via the postgres service"
-fi
+chown postgres:postgres "$PG_DIR/postgresql.conf" "$PG_DIR/pg_hba.conf" 2>/dev/null || true
+chmod 0640 "$PG_DIR/postgresql.conf" "$PG_DIR/pg_hba.conf" 2>/dev/null || true
 
 # --- preconfigure Immich's system.json with our OAuth ---------------
 # Immich reads /usr/src/app/config/<file>.json (or wherever
