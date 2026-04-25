@@ -53,8 +53,14 @@ else
 fi
 \$PSQL -tAc "SELECT 1 FROM pg_database WHERE datname='immich'" 2>/dev/null | grep -q 1 \\
     || \$PSQL -c "CREATE DATABASE immich OWNER immich"
-\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS vectorchord CASCADE" || true
-\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS pgvectors CASCADE" || true
+# Pre-install the extensions as postgres (superuser) so immich
+# doesn't need superuser at runtime to run CREATE EXTENSION as part
+# of its own migrations.
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS vector CASCADE" || true
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS vchord CASCADE" || true
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS vectors CASCADE" || true
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS earthdistance CASCADE" || true
+\$PSQL -d immich -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\" CASCADE" || true
 EOF
 chown postgres:postgres "$PROVISION_SCRIPT"
 chmod 0700 "$PROVISION_SCRIPT"
