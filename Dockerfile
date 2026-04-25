@@ -112,18 +112,16 @@ RUN \
 
 COPY oidc-bridge/requirements.txt /usr/local/share/oidc-bridge/requirements.txt
 COPY oidc-bridge/server.py /usr/local/share/oidc-bridge/server.py
-# The base image's python doesn't always ship ensurepip, so a venv
-# isn't reliable. Install pip globally and then install the bridge's
-# pinned deps with --break-system-packages (PEP 668 escape hatch on
-# Ubuntu noble). The container has exactly one Python program; a
-# system-wide install is fine.
+# The imagegenius/immich base ships Python in /lsiopy (a uv-managed
+# venv used by immich-machine-learning). The default `python3` on
+# the PATH resolves to /lsiopy/bin/python3, so we install our bridge
+# deps via `python3 -m pip` (which is guaranteed to use the same
+# interpreter that the bridge runs under). uv-managed venvs ship
+# pip; if they didn't we'd need to bootstrap with ensurepip first,
+# but in practice the imagegenius image has it.
 RUN \
-  apt-get update && \
-  apt-get install -y --no-install-recommends python3-pip && \
-  pip3 install --no-cache-dir --break-system-packages \
-    -r /usr/local/share/oidc-bridge/requirements.txt && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+  python3 -m pip install --no-cache-dir \
+    -r /usr/local/share/oidc-bridge/requirements.txt
 
 # ---------- nginx config --------------------------------------------
 
@@ -147,7 +145,7 @@ COPY rootfs/ /
 RUN \
   set -eux; \
   chmod 0755 \
-    /etc/s6-overlay/s6-rc.d/openhost-init/up \
+    /etc/s6-overlay/s6-rc.d/openhost-init/run \
     /etc/s6-overlay/s6-rc.d/postgres/run \
     /etc/s6-overlay/s6-rc.d/postgres/finish \
     /etc/s6-overlay/s6-rc.d/valkey/run \

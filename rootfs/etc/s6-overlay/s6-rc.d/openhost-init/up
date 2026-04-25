@@ -1,2 +1,1 @@
-#!/command/execlineb -P
-foreground { /usr/local/bin/openhost-prepare.sh }
+/etc/s6-overlay/s6-rc.d/openhost-init/run
