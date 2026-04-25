@@ -91,15 +91,22 @@ RUN \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-# The postgres binaries we copy from the upstream Immich postgres
-# image are built against Debian bookworm's libldap-2.5; Ubuntu noble
-# only has libldap-2.6. Copy the bookworm libldap shared libraries
-# from the pgsrc image to satisfy the dynamic linker. We pull only
-# libldap*.so* (the OpenLDAP client libraries) -- the rest of glibc
-# is forward-compatible enough that postgres runs.
+# The postgres binaries are built against Debian bookworm; Ubuntu
+# noble has different versions of several runtime libraries. Pull
+# the entire Debian-bookworm version of each shared library postgres
+# pins via SONAME from the pgsrc image. We list explicit library
+# basenames rather than copying all of /usr/lib/x86_64-linux-gnu so
+# we don't accidentally overwrite Ubuntu's own libraries that other
+# parts of the image rely on (e.g. nginx, python, the imagegenius
+# Node binary).
 COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libldap-2.5.so.0* /usr/lib/x86_64-linux-gnu/
 COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/liblber-2.5.so.0* /usr/lib/x86_64-linux-gnu/
-RUN ldconfig
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libicui18n.so.72* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libicuuc.so.72* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libicudata.so.72* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libxml2.so.2* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libxslt.so.1* /usr/lib/x86_64-linux-gnu/
+RUN ldconfig 2>&1 | grep -v "is not a symbolic link" || true
 
 # Add postgres binaries to PATH and create the postgres user that
 # matches the upstream image's expectations. uid=999 mirrors what
