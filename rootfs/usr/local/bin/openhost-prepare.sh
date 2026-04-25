@@ -42,14 +42,29 @@ chmod 700 "$SECRETS_DIR"
 # postgres needs it for the unix socket and lock file.
 install -d -o postgres -g postgres -m 0755 /var/run/postgresql
 
-# Photos and config dirs need to be writable by the abc user (UID
-# 911 inside the container). Under rootless podman the OpenHost
-# volume arrives owned by host root, which the container's "root"
-# can read/write but the abc user cannot. chmod world-writable so
-# every in-container user (root, abc, postgres) can write
-# regardless of the host UID mapping. The DB data dir stays 0700
-# postgres-only for security.
-chmod 0777 "$PHOTOS_DIR" "$CONFIG_DIR" 2>/dev/null || true
+# Photos and config dirs need to be writable by the immich process.
+# Under rootless podman the OpenHost volume arrives owned by host
+# root, which the container's "root" (mapped to an unprivileged
+# host UID) can read and write. We run immich as root via PUID=0
+# so the parent dir works, but Immich's startup integrity check
+# also needs the .immich marker files in each subdir
+# (encoded-video, library, profile, thumbs, upload) to confirm it
+# owns the directory tree -- it tries to read them before it's
+# written them. Pre-create the entire tree of marker files here.
+mkdir -p \
+    "$PHOTOS_DIR/encoded-video" \
+    "$PHOTOS_DIR/library" \
+    "$PHOTOS_DIR/profile" \
+    "$PHOTOS_DIR/thumbs" \
+    "$PHOTOS_DIR/upload" \
+    "$PHOTOS_DIR/backups"
+for sub in "" encoded-video library profile thumbs upload backups; do
+    marker="$PHOTOS_DIR${sub:+/$sub}/.immich"
+    if [[ ! -f "$marker" ]]; then
+        : > "$marker"
+    fi
+done
+chmod -R u+rwX "$PHOTOS_DIR" "$CONFIG_DIR" 2>/dev/null || true
 
 # DB_PASSWORD, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET are pre-set as
 # environment variables by the Dockerfile (constant per image; only
