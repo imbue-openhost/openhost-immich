@@ -1,0 +1,2 @@
+#!/command/execlineb -P
+foreground { /usr/local/bin/openhost-prepare.sh }

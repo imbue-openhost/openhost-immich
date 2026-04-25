@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bash
+# OIDC bridge crashing means the OAuth flow is broken; tear the
+# whole container down so OpenHost restarts us.
+exec s6-svscanctl -t /run/s6/services

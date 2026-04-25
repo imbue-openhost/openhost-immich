@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bash
+# Listen on 127.0.0.1:9000 so only nginx can reach the bridge.
+# nginx mounts /_oidc/* and forwards the request, including the
+# X-OpenHost-Is-Owner header.
+cd /usr/local/share/oidc-bridge
+exec /opt/oidc-bridge-venv/bin/python -m uvicorn server:app \
+    --host 127.0.0.1 \
+    --port 9000 \
+    --log-level info \
+    --no-access-log

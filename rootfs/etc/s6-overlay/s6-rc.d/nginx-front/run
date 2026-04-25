@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bash
+# nginx (port 8080) routes:
+#   /_oidc/*  -> 127.0.0.1:9000  (OIDC bridge)
+#   /         -> 127.0.0.1:2283  (immich-server)
+#
+# Run in foreground; s6 owns the lifecycle.
+exec nginx -g 'daemon off;'

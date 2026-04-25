@@ -1,0 +1,32 @@
+[app]
+name = "immich"
+version = "0.1.0"
+description = "Immich self-hosted photo and video management, with OIDC bridge for OpenHost SSO"
+authors = ["Andrew Laack <andrew@laack.co>"]
+
+[runtime.container]
+# nginx fronts the entire app on :8080; the OpenHost router proxies
+# this through https://<app>.<zone>/. Inside the container nginx
+# routes /_oidc/* to the OIDC bridge and everything else to the
+# Immich server. Postgres, Valkey, machine-learning, and the OIDC
+# bridge are all internal sidecar processes supervised by s6-overlay.
+image = "Dockerfile"
+port = 8080
+
+[resources]
+# Immich's machine-learning service loads ~1.5 GiB of models into
+# RAM at full tilt. Postgres + redis + the Node server add another
+# couple hundred MiB. 6 GiB is on the lower end of what people
+# self-host Immich at; bump for large libraries.
+memory_mb = 6144
+cpu_millicores = 3000
+
+[data]
+# Persistent volume holds:
+#   /data/app_data/immich/postgres/   -- Postgres DB
+#   /data/app_data/immich/photos/     -- IMMICH_MEDIA_LOCATION (uploaded
+#                                        and original assets, the bulk
+#                                        of the storage)
+#   /data/app_data/immich/config/     -- ML model cache, app config
+#   /data/app_data/immich/oidc/       -- OIDC bridge signing key + state
+app_data = true

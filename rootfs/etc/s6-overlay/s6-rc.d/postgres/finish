@@ -1,0 +1,5 @@
+#!/usr/bin/with-contenv bash
+# When postgres exits, take the whole container down so OpenHost
+# restarts it cleanly. immich-server cannot recover from a database
+# disappearing under it.
+exec s6-svscanctl -t /run/s6/services
