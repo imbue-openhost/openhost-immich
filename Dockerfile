@@ -84,7 +84,7 @@ RUN \
     liblz4-1 \
     libxslt1.1 \
     libxml2 \
-    libldap-2.5-0 \
+    libldap2 \
     libsasl2-2 \
     libgssapi-krb5-2 \
     libcurl4 && \
