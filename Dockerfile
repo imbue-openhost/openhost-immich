@@ -96,9 +96,17 @@ RUN \
 # the upstream Debian package uses; pick something else if the
 # imagegenius base already claims it (it doesn't on the noble base).
 ENV PATH="/usr/lib/postgresql/14/bin:${PATH}"
+# imagegenius/immich already has gid/uid 999 (the abc group) and may
+# already have a `postgres` user from a transitive base layer. Be
+# tolerant of either: only create the group/user if they don't exist,
+# and don't insist on a specific uid.
 RUN \
-  groupadd -g 999 postgres && \
-  useradd --system -u 999 -g postgres -d /var/lib/postgresql -s /bin/bash postgres
+  if ! getent group postgres >/dev/null 2>&1; then \
+    groupadd --system postgres; \
+  fi && \
+  if ! id postgres >/dev/null 2>&1; then \
+    useradd --system -g postgres -d /var/lib/postgresql -s /bin/bash postgres; \
+  fi
 
 # ---------- OIDC bridge (Python) ------------------------------------
 
