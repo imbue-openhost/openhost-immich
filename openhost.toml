@@ -21,6 +21,25 @@ port = 8080
 memory_mb = 6144
 cpu_millicores = 3000
 
+[routing]
+# OIDC discovery and token endpoints must be public so Immich-server
+# can reach them server-side (those calls don't carry an OpenHost
+# session cookie). The user-facing /authorize endpoint is NOT in
+# public_paths -- it needs the X-OpenHost-Is-Owner header that
+# OpenHost only stamps on authenticated-owner requests, so the
+# bridge can identify the owner by something other than the
+# anonymous query string.
+#
+# OpenHost's path matcher is a prefix match, so we list each
+# individual endpoint explicitly to avoid a /_oidc/ blanket entry
+# accidentally exposing /authorize too.
+public_paths = [
+    "/_oidc/.well-known/openid-configuration",
+    "/_oidc/jwks",
+    "/_oidc/token",
+    "/_oidc/userinfo",
+]
+
 [data]
 # Persistent volume holds:
 #   /data/app_data/immich/postgres/   -- Postgres DB
