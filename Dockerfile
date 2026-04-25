@@ -149,7 +149,7 @@ RUN \
     chmod 0755 /usr/local/bin/uv; \
     rm -rf /tmp/uv.tgz /tmp/uv-x86_64-unknown-linux-gnu; \
   fi; \
-  VIRTUAL_ENV=/lsiopy uv pip install --no-cache \
+  uv pip install --python /lsiopy/bin/python --no-cache \
     -r /usr/local/share/oidc-bridge/requirements.txt
 
 # ---------- nginx config --------------------------------------------

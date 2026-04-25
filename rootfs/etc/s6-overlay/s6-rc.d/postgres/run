@@ -36,8 +36,16 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     sleep 2
 done
 DB_PASSWORD_ESC=\$(printf '%s' "\${DB_PASSWORD}" | sed -e "s/'/''/g")
-\${PSQL} -tAc "SELECT 1 FROM pg_roles WHERE rolname='immich'" 2>/dev/null | grep -q 1 \\
-    || \${PSQL} -c "CREATE ROLE immich WITH LOGIN PASSWORD '\${DB_PASSWORD_ESC}'"
+# Always (idempotently) sync the role's password to the current
+# DB_PASSWORD, even if the role already exists with a different
+# password from an earlier image build. This is safe because the
+# role+DB are local to this app's loopback-only DB; the password is
+# trust-from-localhost-only and only Immich uses it.
+if \${PSQL} -tAc "SELECT 1 FROM pg_roles WHERE rolname='immich'" 2>/dev/null | grep -q 1; then
+    \${PSQL} -c "ALTER ROLE immich WITH LOGIN PASSWORD '\${DB_PASSWORD_ESC}'"
+else
+    \${PSQL} -c "CREATE ROLE immich WITH LOGIN PASSWORD '\${DB_PASSWORD_ESC}'"
+fi
 \${PSQL} -tAc "SELECT 1 FROM pg_database WHERE datname='immich'" 2>/dev/null | grep -q 1 \\
     || \${PSQL} -c "CREATE DATABASE immich OWNER immich"
 \${PSQL} -d immich -c "CREATE EXTENSION IF NOT EXISTS vectorchord CASCADE" || true
