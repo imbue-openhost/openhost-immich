@@ -112,15 +112,24 @@ RUN \
 
 COPY oidc-bridge/requirements.txt /usr/local/share/oidc-bridge/requirements.txt
 COPY oidc-bridge/server.py /usr/local/share/oidc-bridge/server.py
-# The imagegenius/immich base ships Python in /lsiopy (a uv-managed
-# venv used by immich-machine-learning). The default `python3` on
-# the PATH resolves to /lsiopy/bin/python3, so we install our bridge
-# deps via `python3 -m pip` (which is guaranteed to use the same
-# interpreter that the bridge runs under). uv-managed venvs ship
-# pip; if they didn't we'd need to bootstrap with ensurepip first,
-# but in practice the imagegenius image has it.
+# The imagegenius/immich base ships Python at /lsiopy (a uv-managed
+# venv used by immich-machine-learning) and that's what `python3`
+# resolves to on the PATH. uv-created venvs do NOT include pip by
+# default, so we use uv (already present in the base image at /tmp
+# during build, but not always in the final layer) to install our
+# bridge deps directly into the /lsiopy venv. If uv isn't on PATH
+# we download a one-off copy.
 RUN \
-  python3 -m pip install --no-cache-dir \
+  set -eux; \
+  if ! command -v uv >/dev/null 2>&1; then \
+    UV_VERSION=$(curl -fsSL https://api.github.com/repos/astral-sh/uv/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1); \
+    curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/uv.tgz; \
+    tar -xzf /tmp/uv.tgz -C /tmp; \
+    cp /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv; \
+    chmod 0755 /usr/local/bin/uv; \
+    rm -rf /tmp/uv.tgz /tmp/uv-x86_64-unknown-linux-gnu; \
+  fi; \
+  VIRTUAL_ENV=/lsiopy uv pip install --no-cache \
     -r /usr/local/share/oidc-bridge/requirements.txt
 
 # ---------- nginx config --------------------------------------------
