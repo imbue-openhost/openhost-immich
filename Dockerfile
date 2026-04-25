@@ -223,9 +223,13 @@ ENV \
   # OAuth settings come from the pre-baked client_id/client_secret/
   # issuer URL rather than requiring an admin to fill them in.
   IMMICH_CONFIG_FILE="/data/app_data/immich/config/system.json" \
-  # Override the imagegenius default UPLOAD/DATA paths so they live
-  # on the OpenHost persistent volume (set in start.sh / s6 init).
-  PUID="911" \
-  PGID="911"
+  # Run immich as the container's root user (UID 0 inside the
+  # container). Under rootless podman that maps to an unprivileged
+  # host UID, so it's not a privilege escalation; and it sidesteps
+  # the rootless-volume permissions issue where the OpenHost-mounted
+  # volume comes in owned by host root and a different in-container
+  # UID cannot write to it.
+  PUID="0" \
+  PGID="0"
 
 EXPOSE 8080
