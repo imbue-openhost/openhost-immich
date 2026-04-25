@@ -91,6 +91,16 @@ RUN \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
+# The postgres binaries we copy from the upstream Immich postgres
+# image are built against Debian bookworm's libldap-2.5; Ubuntu noble
+# only has libldap-2.6. Copy the bookworm libldap shared libraries
+# from the pgsrc image to satisfy the dynamic linker. We pull only
+# libldap*.so* (the OpenLDAP client libraries) -- the rest of glibc
+# is forward-compatible enough that postgres runs.
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/libldap-2.5.so.0* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgsrc /usr/lib/x86_64-linux-gnu/liblber-2.5.so.0* /usr/lib/x86_64-linux-gnu/
+RUN ldconfig
+
 # Add postgres binaries to PATH and create the postgres user that
 # matches the upstream image's expectations. uid=999 mirrors what
 # the upstream Debian package uses; pick something else if the
@@ -99,14 +109,16 @@ ENV PATH="/usr/lib/postgresql/14/bin:${PATH}"
 # imagegenius/immich already has gid/uid 999 (the abc group) and may
 # already have a `postgres` user from a transitive base layer. Be
 # tolerant of either: only create the group/user if they don't exist,
-# and don't insist on a specific uid.
+# and don't insist on a specific uid. Make sure the home directory
+# exists either way -- some su invocations warn if it doesn't.
 RUN \
   if ! getent group postgres >/dev/null 2>&1; then \
     groupadd --system postgres; \
   fi && \
   if ! id postgres >/dev/null 2>&1; then \
     useradd --system -g postgres -d /var/lib/postgresql -s /bin/bash postgres; \
-  fi
+  fi && \
+  install -d -o postgres -g postgres -m 0700 /var/lib/postgresql
 
 # ---------- OIDC bridge (Python) ------------------------------------
 
