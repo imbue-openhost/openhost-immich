@@ -38,28 +38,14 @@ log "DATA_DIR=$DATA_DIR"
 mkdir -p "$DATA_DIR" "$PG_DIR" "$PHOTOS_DIR" "$CONFIG_DIR" "$OIDC_DIR" "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 
-# --- random-secret helper -------------------------------------------
-# Each secret lives in its own file under $SECRETS_DIR. We generate
-# once on first boot and reuse forever after; otherwise a restart
-# would invalidate the DB password.
-gen_secret() {
-    local name=$1 path
-    path="$SECRETS_DIR/$name"
-    if [[ ! -s "$path" ]]; then
-        # 32 bytes of base64 = 43 chars, well over enough entropy
-        # and uses only [A-Za-z0-9_-] which is safe in URLs and
-        # most config-file syntaxes.
-        local bytes
-        bytes=$(openssl rand -base64 32 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
-        printf '%s' "$bytes" > "$path"
-        chmod 600 "$path"
-    fi
-    cat "$path"
-}
-
-DB_PASSWORD=$(gen_secret db-password)
-OIDC_CLIENT_ID=$(gen_secret oidc-client-id)
-OIDC_CLIENT_SECRET=$(gen_secret oidc-client-secret)
+# DB_PASSWORD, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET are pre-set as
+# environment variables by the Dockerfile (constant per image; only
+# the loopback-local Postgres and OIDC bridge need them). We use
+# whatever the env carries -- letting an operator override via the
+# OpenHost manifest if they ever want to.
+: "${DB_PASSWORD:?DB_PASSWORD must be set in env}"
+: "${OIDC_CLIENT_ID:?OIDC_CLIENT_ID must be set in env}"
+: "${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET must be set in env}"
 
 # --- compute the public base URL ------------------------------------
 # OpenHost serves us at https://<app-name>.<zone-domain>/. The
@@ -74,77 +60,16 @@ fi
 PUBLIC_BASE="https://${APP_NAME}.${ZONE}"
 log "PUBLIC_BASE=$PUBLIC_BASE"
 
-# --- export to s6 services via /etc/s6-overlay/s6-rc.d/<svc>/run ---
-# The cleanest way to share these values across s6 services without
-# baking them into the image is a generated env file. Each service's
-# run script `set -a; source` it and continues.
-ENV_FILE="$DATA_DIR/runtime.env"
-cat > "$ENV_FILE" <<EOF
-DB_PASSWORD='${DB_PASSWORD}'
-OIDC_CLIENT_ID='${OIDC_CLIENT_ID}'
-OIDC_CLIENT_SECRET='${OIDC_CLIENT_SECRET}'
-OIDC_PUBLIC_BASE='${PUBLIC_BASE}'
-OIDC_DATA_DIR='${OIDC_DIR}'
-PUBLIC_BASE='${PUBLIC_BASE}'
-PG_DATA_DIR='${PG_DIR}'
-PHOTOS_DIR='${PHOTOS_DIR}'
-CONFIG_DIR='${CONFIG_DIR}'
-EOF
-chmod 640 "$ENV_FILE"
-
-# --- export to the imagegenius/immich expected env --------------------
-# The imagegenius base image's immich-server start script reads its
-# DB credentials and paths from the standard env vars. We can't set
-# new env vars in /etc/environment because s6's container init
-# doesn't read it on every service spawn; the cleanest path is to
-# write `/etc/s6-overlay/s6-rc.d/svc-immich/run` overrides... but
-# the imagegenius scripts already read from process env. Setting
-# the values in the s6 stage-1 init env file works.
-S6_ENV=/etc/s6-overlay/scripts/openhost-immich.env
-mkdir -p /etc/s6-overlay/scripts
-cat > "$S6_ENV" <<EOF
-DB_PASSWORD='${DB_PASSWORD}'
-DB_HOSTNAME='127.0.0.1'
-DB_PORT='5432'
-DB_USERNAME='immich'
-DB_DATABASE_NAME='immich'
-REDIS_HOSTNAME='127.0.0.1'
-REDIS_PORT='6379'
-SERVER_HOST='127.0.0.1'
-SERVER_PORT='2283'
-MACHINE_LEARNING_HOST='127.0.0.1'
-MACHINE_LEARNING_PORT='3003'
-IMMICH_MEDIA_LOCATION='${PHOTOS_DIR}'
-EOF
-
-# Source the env file early so subsequent services in this s6
-# stage already see DB_PASSWORD etc. (s6's `with-contenv` reads
-# /var/run/s6/container_environment/; we mirror our env vars in
-# there for compatibility.)
+# Most env vars are pre-set in the Dockerfile (DB_PASSWORD,
+# DB_HOSTNAME, etc.) so the imagegenius image's init scripts see
+# them at process spawn time. We only need to surface the small
+# set of values that depend on $OPENHOST_APP_DATA_DIR (which is
+# only known at container start) into /var/run/s6/container_environment/
+# so subsequent s6 services see them too.
 mkdir -p /var/run/s6/container_environment
-for var in DB_PASSWORD DB_HOSTNAME DB_PORT DB_USERNAME DB_DATABASE_NAME \
-           REDIS_HOSTNAME REDIS_PORT SERVER_HOST SERVER_PORT \
-           MACHINE_LEARNING_HOST MACHINE_LEARNING_PORT IMMICH_MEDIA_LOCATION \
-           OIDC_PUBLIC_BASE OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_DATA_DIR; do
-    case "$var" in
-        DB_PASSWORD) printf '%s' "$DB_PASSWORD" > /var/run/s6/container_environment/$var ;;
-        DB_HOSTNAME) printf '127.0.0.1' > /var/run/s6/container_environment/$var ;;
-        DB_PORT) printf '5432' > /var/run/s6/container_environment/$var ;;
-        DB_USERNAME) printf 'immich' > /var/run/s6/container_environment/$var ;;
-        DB_DATABASE_NAME) printf 'immich' > /var/run/s6/container_environment/$var ;;
-        REDIS_HOSTNAME) printf '127.0.0.1' > /var/run/s6/container_environment/$var ;;
-        REDIS_PORT) printf '6379' > /var/run/s6/container_environment/$var ;;
-        SERVER_HOST) printf '127.0.0.1' > /var/run/s6/container_environment/$var ;;
-        SERVER_PORT) printf '2283' > /var/run/s6/container_environment/$var ;;
-        MACHINE_LEARNING_HOST) printf '127.0.0.1' > /var/run/s6/container_environment/$var ;;
-        MACHINE_LEARNING_PORT) printf '3003' > /var/run/s6/container_environment/$var ;;
-        IMMICH_MEDIA_LOCATION) printf '%s' "$PHOTOS_DIR" > /var/run/s6/container_environment/$var ;;
-        OIDC_PUBLIC_BASE) printf '%s' "$PUBLIC_BASE" > /var/run/s6/container_environment/$var ;;
-        OIDC_CLIENT_ID) printf '%s' "$OIDC_CLIENT_ID" > /var/run/s6/container_environment/$var ;;
-        OIDC_CLIENT_SECRET) printf '%s' "$OIDC_CLIENT_SECRET" > /var/run/s6/container_environment/$var ;;
-        OIDC_DATA_DIR) printf '%s' "$OIDC_DIR" > /var/run/s6/container_environment/$var ;;
-    esac
-done
+printf '%s' "$PHOTOS_DIR"     > /var/run/s6/container_environment/IMMICH_MEDIA_LOCATION
+printf '%s' "$PUBLIC_BASE"    > /var/run/s6/container_environment/OIDC_PUBLIC_BASE
+printf '%s' "$OIDC_DIR"       > /var/run/s6/container_environment/OIDC_DATA_DIR
 
 # --- ensure permissions on the persistent volume ---------------------
 # The persistent OpenHost volume arrives owned by the host root

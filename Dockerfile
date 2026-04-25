@@ -182,6 +182,16 @@ ENV \
   DB_DATABASE_NAME="immich" \
   REDIS_HOSTNAME="127.0.0.1" \
   REDIS_PORT="6379" \
+  # The DB and OIDC bridge live in the same container as immich,
+  # accessible only over loopback. The "secret"-ness of these
+  # values doesn't add security: anything that can read them is
+  # already inside the container. Hardcoding lets us avoid the
+  # tricky problem of getting random values generated at first
+  # boot to be visible to the imagegenius init scripts that read
+  # DB_PASSWORD before our own init runs.
+  DB_PASSWORD="immich-loopback-only" \
+  OIDC_CLIENT_ID="openhost-immich" \
+  OIDC_CLIENT_SECRET="openhost-immich-loopback-only" \
   # Move Immich's HTTP server off 8080 (which is nginx) and ML off
   # 3003 (its default).
   SERVER_HOST="127.0.0.1" \
