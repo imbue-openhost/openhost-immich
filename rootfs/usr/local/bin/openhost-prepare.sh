@@ -22,8 +22,12 @@ set -euo pipefail
 log() { printf '[openhost-init] %s\n' "$*" >&2; }
 
 DATA_DIR="${OPENHOST_APP_DATA_DIR:-/data/app_data/immich}"
+# Photos live on the archive tier so the operator can back the
+# bulk-media volume with S3 (via JuiceFS) without paying the latency
+# tax on Postgres or the OIDC bridge.  See [data] in openhost.toml.
+ARCHIVE_DIR="${OPENHOST_APP_ARCHIVE_DIR:-/data/app_archive/immich}"
 PG_DIR="$DATA_DIR/postgres"
-PHOTOS_DIR="$DATA_DIR/photos"
+PHOTOS_DIR="$ARCHIVE_DIR/photos"
 CONFIG_DIR="$DATA_DIR/config"
 OIDC_DIR="$DATA_DIR/oidc"
 SECRETS_DIR="$DATA_DIR/secrets"
@@ -32,10 +36,22 @@ if [[ -z "${OPENHOST_APP_DATA_DIR:-}" ]]; then
     log "FATAL: OPENHOST_APP_DATA_DIR not set"
     exit 1
 fi
+if [[ -z "${OPENHOST_APP_ARCHIVE_DIR:-}" ]]; then
+    # The archive tier is mandatory in this manifest (app_archive=true
+    # in openhost.toml).  An OpenHost runtime that doesn't honor that
+    # would silently lose every photo to a directory inside the
+    # container's writable layer that gets dropped on restart, so
+    # fail loudly here instead of giving the operator a deceptively
+    # working install on the first boot.
+    log "FATAL: OPENHOST_APP_ARCHIVE_DIR not set; this manifest requires app_archive=true"
+    exit 1
+fi
 
 log "DATA_DIR=$DATA_DIR"
+log "ARCHIVE_DIR=$ARCHIVE_DIR"
 
-mkdir -p "$DATA_DIR" "$PG_DIR" "$PHOTOS_DIR" "$CONFIG_DIR" "$OIDC_DIR" "$SECRETS_DIR"
+mkdir -p "$DATA_DIR" "$PG_DIR" "$CONFIG_DIR" "$OIDC_DIR" "$SECRETS_DIR"
+mkdir -p "$ARCHIVE_DIR" "$PHOTOS_DIR"
 chmod 700 "$SECRETS_DIR"
 
 # /var/run/postgresql is on tmpfs (recreated empty on every boot).
@@ -105,7 +121,12 @@ printf '%s' "$OIDC_DIR"       > /var/run/s6/container_environment/OIDC_DATA_DIR
 # abc (immich), and oidc-bridge processes all need to read/write
 # their respective subtrees. Recursive chmod is safer than chown
 # under rootless because chown to non-host-mapped UIDs can fail.
-chmod 0755 "$DATA_DIR" "$PG_DIR" "$PHOTOS_DIR" "$CONFIG_DIR" "$OIDC_DIR"
+#
+# ARCHIVE_DIR is in its own bind mount — when backed by JuiceFS the
+# chmod is a no-op for the underlying S3 storage but does apply to
+# the FUSE mount metadata, which is what the in-process Immich
+# permission checks see, so it still matters here.
+chmod 0755 "$DATA_DIR" "$PG_DIR" "$ARCHIVE_DIR" "$PHOTOS_DIR" "$CONFIG_DIR" "$OIDC_DIR"
 chmod 0700 "$SECRETS_DIR"
 # Postgres requires its data dir to be 0700 owned by the postgres
 # user. We do best-effort chown -- it'll succeed in most rootless
