@@ -1,7 +1,7 @@
 [app]
 name = "immich"
 version = "0.1.0"
-description = "Immich self-hosted photo and video management, with OIDC bridge for OpenHost SSO"
+description = "Immich self-hosted photo and video management, with OIDC bridge for Cloud in a Bottle SSO"
 authors = ["Andrew Laack <andrew@laack.co>"]
 
 [runtime.container]
