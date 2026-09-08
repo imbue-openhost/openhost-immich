@@ -41,11 +41,42 @@ public_paths = [
 ]
 
 [data]
-# Persistent volume holds:
-#   /data/app_data/immich/postgres/   -- Postgres DB
-#   /data/app_data/immich/photos/     -- IMMICH_MEDIA_LOCATION (uploaded
-#                                        and original assets, the bulk
-#                                        of the storage)
-#   /data/app_data/immich/config/     -- ML model cache, app config
-#   /data/app_data/immich/oidc/       -- OIDC bridge signing key + state
+# Two persistent tiers:
+#
+# app_data (local disk, low-latency, transactional):
+#   /data/app_data/immich/postgres/   -- Postgres DB.  MUST stay on
+#                                        local because Postgres WAL
+#                                        + JuiceFS's close-to-open
+#                                        consistency is a known
+#                                        corruption recipe.
+#   /data/app_data/immich/config/     -- system.json, ML model cache.
+#                                        Read at process start; would
+#                                        be silly to make it slow.
+#   /data/app_data/immich/oidc/       -- OIDC bridge RSA signing key +
+#                                        state.  Hot path for every
+#                                        login.  Tiny.
+#   /data/app_data/immich/secrets/    -- DB password + OIDC client
+#                                        secret.  Tiny, hot.
+#
+# app_archive (operator-configurable: local OR S3-via-JuiceFS):
+#   /data/app_archive/immich/photos/  -- IMMICH_MEDIA_LOCATION.  Bulk
+#                                        media (originals + transcodes
+#                                        + thumbnails).  Write-heavy
+#                                        on import, then mostly-read
+#                                        with infrequent re-encodes.
+#                                        The whole point of the
+#                                        archive tier exists for this
+#                                        kind of workload: a single-
+#                                        digit-MiB Postgres DB plus
+#                                        terabytes of media that the
+#                                        operator wants on cheap S3.
+#
+# Migration note: an existing immich install with photos on app_data
+# will NOT be auto-migrated by upgrading to this manifest.  After
+# upgrade the operator must manually move
+#   /data/app_data/immich/photos/  ->  /data/app_archive/immich/photos/
+# from the host (or via ``oh app exec``).  We don't do this in the
+# prepare script because rmtree-style migrations of multi-GiB photo
+# libraries deserve operator awareness, not silent automation.
 app_data = true
+app_archive = true
